@@ -1,0 +1,24 @@
+From: Zhao Peng <zhao.peng@xinglong-electronics.example>
+To: bookings@forwarder.example
+Subject: FCL booking Shanghai > Hamburg, contract XL-2026-118
+Date: 22 Oct 2026
+
+Dear colleagues,
+
+please book 1x40HC sea freight from Shanghai to Hamburg, cargo ready 5 November.
+Consignee: Rhein Systemtechnik GmbH, Duisburg.
+
+- Integrated circuits, microcontrollers - HS 8542.31
+- Satellite navigation receiver modules - HS 8526.91
+
+Prices as per contract XL-2026-118, strictly confidential, not to be disclosed to third parties.
+
+--- Attachment: XL-118_spec_sheet.pdf (extracted text) ---
+Microcontroller module MCM-7, operating frequency 2.4 GHz
+Positioning accuracy of the receiver module: 3 µm
+Operating temperature -55 to +125 °C
+--- End attachment ---
+
+Regards,
+Zhao Peng
+Xinglong Electronics Co., Ltd.

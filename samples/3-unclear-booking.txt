@@ -1,0 +1,16 @@
+From: Omar Haddad <omar.haddad@skyline-components.example>
+To: bookings@forwarder.example
+Subject: Air freight quote Shenzhen > Frankfurt, urgent
+Date: 22 Oct 2026
+
+Hi,
+
+please quote air freight Shenzhen to Frankfurt, 14 cartons, 310 kg, ready Friday.
+
+- Carbon fibre frame assemblies for unmanned aerial platforms - HS 6815.19
+- Brushless motors - HS 8501.31
+- Flight controller boards - HS 8537.10
+
+Thanks,
+Omar Haddad
+Skyline Components GmbH

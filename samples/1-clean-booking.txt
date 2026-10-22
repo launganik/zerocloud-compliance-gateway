@@ -1,0 +1,20 @@
+From: Mei Lin <mei.lin@harbourline-home.example>
+To: bookings@forwarder.example
+Subject: FCL booking Ningbo > Hamburg, PO 55120
+Date: 22 Oct 2026
+
+Hello team,
+
+please book 1x40HC sea freight from Ningbo to Hamburg, cargo ready 3 November.
+Incoterm FOB Ningbo. Consignee: Gartenwelt Handels GmbH, Hamburg.
+
+- Outdoor garden chairs, aluminium frame - HS 9401.79
+- Garden tables, aluminium - HS 9403.20
+- Seat cushions, polyester - HS 9404.90
+
+Gross weight 6,850 kg, 412 cartons.
+
+Best regards,
+Mei Lin
+Harbourline Home Co., Ltd.
++86 574 5550 1188

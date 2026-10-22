@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroCloud Gateway</title>
+<!-- No external fonts, scripts or CDNs: this page must work with zero internet. -->
+<style>
+  :root {
+    --bg: #f4f5f2;
+    --card: #ffffff;
+    --ink: #15181c;
+    --muted: #5d646d;
+    --line: #dfe2dc;
+    --accent: #0f6b4f;
+    --accent-ink: #ffffff;
+    --ok: #157347;
+    --ok-bg: #e5f4ec;
+    --warn: #8a5a00;
+    --warn-bg: #fdf1d8;
+    --error: #b42318;
+    --error-bg: #fde8e6;
+    --ai: #3b4fb8;
+    --ai-bg: #eceffd;
+    --mark: #fff3b0;
+    --code-bg: #101418;
+    --code-ink: #b8f5d0;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between;
+    padding: 14px 24px; border-bottom: 1px solid var(--line); background: var(--card);
+  }
+  .brand h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+  .brand h1 span { color: var(--accent); }
+  .brand p { margin: 0; color: var(--muted); font-size: 14px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--bg); font-size: 14px; white-space: nowrap;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .pill.good { background: var(--ok-bg); border-color: transparent; color: var(--ok); font-weight: 600; }
+  .pill.good .dot { background: var(--ok); }
+  .pill.bad { background: var(--warn-bg); border-color: transparent; color: var(--warn); font-weight: 600; }
+  .pill.bad .dot { background: var(--warn); }
+  nav { display: flex; gap: 4px; padding: 10px 24px 0; max-width: 1400px; margin: 0 auto; }
+  nav button { border-radius: 8px 8px 0 0; border-bottom: none; padding: 9px 18px; font-weight: 600; font-size: 15px; }
+  nav button.active { background: var(--card); color: var(--accent); }
+  .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--error); color: #fff; font-size: 12px; margin-left: 6px; }
+  main { padding: 0 24px 24px; max-width: 1400px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .grid.review { grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1.5fr); }
+  @media (max-width: 900px) {
+    .grid, .grid.review { grid-template-columns: 1fr; }
+    main, nav { padding-left: 16px; padding-right: 16px; }
+    header { padding: 14px 16px; }
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+  .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  h3 { margin: 18px 0 8px; font-size: 15px; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); padding: 7px 14px; font-size: 15px;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); padding: 12px 20px; font-size: 17px; font-weight: 600; }
+  button.danger { background: var(--card); color: var(--error); border-color: var(--error); padding: 12px 20px; font-size: 17px; font-weight: 600; }
+  button.chip { border-radius: 999px; background: var(--ai-bg); border-color: transparent; color: var(--ai); font-size: 14px; }
+  button:disabled { opacity: 0.55; cursor: wait; }
+  textarea, input[type=text] {
+    width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: #fbfbfa; color: var(--ink); font: inherit; font-size: 15px;
+  }
+  textarea.email { min-height: 400px; resize: vertical; font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+  .run { display: flex; align-items: center; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .hint { color: var(--muted); font-size: 14px; }
+  .placeholder { color: var(--muted); padding: 32px 0; text-align: center; }
+  .steps { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .step { padding: 6px 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .step.done { background: var(--ok-bg); border-color: transparent; color: var(--ok); }
+  .step.busy { background: var(--warn-bg); border-color: transparent; color: var(--warn); font-weight: 600; }
+  .live { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 12px; }
+  .banner { border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+  .banner.clear { background: var(--ok-bg); color: var(--ok); }
+  .banner.hold { background: var(--error-bg); color: var(--error); }
+  .banner.rejected { background: var(--warn-bg); color: var(--warn); }
+  .banner .big { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; }
+  .banner .sub { margin-top: 6px; color: var(--ink); font-size: 16px; }
+  .banner .logged { margin-top: 8px; font-size: 14px; color: var(--muted); }
+  .banner button { margin-top: 12px; }
+  .reasons { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .reasons li { padding: 10px 12px; border-radius: 8px; background: var(--error-bg); color: var(--error); font-size: 16px; }
+  .reasons .ev { display: block; margin-top: 3px; color: var(--ink); opacity: 0.7; font-size: 13px; overflow-wrap: anywhere; }
+  .more { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  .ai-box { border: 1px solid var(--ai-bg); background: #f8f9ff; border-radius: 12px; padding: 14px 16px; margin-top: 14px; }
+  .ai-box .title { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-weight: 700; color: var(--ai); font-size: 15px; }
+  .ai-box .title span { font-weight: 400; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  pre.json { margin: 10px 0 0; padding: 12px; border-radius: 8px; background: var(--code-bg); color: var(--code-ink); white-space: pre-wrap; word-break: break-word; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; max-height: 320px; overflow: auto; }
+  .tag { display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px; }
+  .tag.elm { background: var(--ok-bg); color: var(--ok); }
+  .tag.box { background: var(--error-bg); color: var(--error); }
+  .warn-line { margin-top: 8px; font-size: 13px; color: var(--warn); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .ask-row { display: flex; gap: 8px; }
+  .ask-row input { flex: 1; }
+  .answer { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+  .answer .q { font-weight: 700; font-size: 15px; }
+  .answer .q-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .answer .copy { font-size: 13px; padding: 2px 10px; flex: none; }
+  .answer .a { margin-top: 6px; font-size: 16px; white-space: pre-wrap; }
+  .answer .src { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .case-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .case-list li { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-size: 15px; }
+  .case-list li.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .case-list .meta { font-size: 13px; color: var(--muted); }
+  .status { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+  .status.held { background: var(--error-bg); color: var(--error); }
+  .status.approved, .status.released_to_elm { background: var(--ok-bg); color: var(--ok); }
+  .status.rejected { background: var(--warn-bg); color: var(--warn); }
+  .mail { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fbfbfa; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; margin: 14px 0; }
+  .mail mark { background: var(--mark); color: inherit; border-radius: 3px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .error-box { background: var(--error-bg); color: var(--error); padding: 12px; border-radius: 8px; margin-top: 8px; }
+  .history { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); }
+  .history li { position: relative; padding: 4px 0 10px 16px; font-size: 14px; }
+  .history li::before { content: ""; position: absolute; left: -6px; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .history .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .history .what { font-weight: 600; }
+  footer { max-width: 1400px; margin: 0 auto; padding: 0 24px 24px; color: var(--muted); font-size: 13px; }
+  footer button { font-size: 13px; padding: 2px 8px; margin-left: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>Zero<span>Cloud</span> Compliance Gateway</h1>
+    <p>Step 0 before ELM · every booking email is read by AI on our own hardware first</p>
+  </div>
+  <div class="pills">
+    <span class="pill" id="net"><span class="dot"></span><span>Checking network…</span></span>
+    <span class="pill" id="device"><span class="dot"></span><span>Device…</span></span>
+  </div>
+</header>
+
+<nav>
+  <button data-tab="gate" class="active">① Gate</button>
+  <button data-tab="review">② Compliance review<span class="count" id="held-count" hidden>0</span></button>
+</nav>
+
+<main>
+  <section class="tab active" id="tab-gate">
+    <div class="grid">
+      <div class="card">
+        <h2>Inbound booking email</h2>
+        <div class="samples" id="samples"></div>
+        <textarea class="email" id="email" spellcheck="false" placeholder="Paste an inbound booking email…"></textarea>
+        <div class="run">
+          <button class="primary" id="screen">Run step 0</button>
+          <span class="hint">Processed on this device only</span>
+        </div>
+      </div>
+      <div class="card" id="gate-out">
+        <h2>Decision</h2>
+        <div class="placeholder">Pick a sample email and press <b>Run step 0</b>.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-review">
+    <div class="grid review">
+      <div class="card">
+        <h2>Cases</h2>
+        <ul class="case-list" id="case-list"></ul>
+      </div>
+      <div class="card" id="case-detail">
+        <h2>Compliance review</h2>
+        <div class="placeholder">Select a held case.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="disclaimer">Proposed rules, to be confirmed by Forto Compliance. Prototype on a Raspberry Pi; in production: our own server, no external AI provider. The knowledge base contains demo documents.</span>
+  <button id="reset">Reset demo</button>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STATUS_TEXT = { held: "Held", approved: "Approved", rejected: "Rejected", released_to_elm: "Cleared" };
+const EVENT_TEXT = {
+  screened: "Screened", released_to_elm: "Sent to ELM", booking_extracted: "Booking data extracted",
+  kb_query: "Knowledge base asked", approved: "Approved", rejected: "Rejected",
+};
+const SUGGESTED = ["Is this a dual-use item?", "What should I ask the customer?", "Draft an email to the customer", "Can this email go to cloud AI?"];
+let selectedCase = null;
+let gateRun = null;  // the running screening request, so a new action can stop it and free the model
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function hhmm(iso) {
+  return iso ? iso.slice(11, 16) : "";
+}
+
+function setPill(id, state, text) {
+  const pill = $(id);
+  pill.className = "pill" + (state ? " " + state : "");
+  pill.lastElementChild.textContent = text;
+}
+
+// The reviewer's name, remembered in this browser, for the audit log.
+function reviewerName() {
+  const field = document.querySelector("#reviewer-name");
+  if (field && field.value.trim()) return field.value.trim();
+  try { return localStorage.getItem("zc-reviewer") || "Compliance Manager"; } catch { return "Compliance Manager"; }
+}
+
+function stopGateRun() {
+  if (gateRun) gateRun.abort();
+  gateRun = null;
+}
+
+async function refreshStatus() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    if (s.internet) setPill("net", "bad", "Internet connected: switch it off for the demo");
+    else setPill("net", "good", "Air-gapped: no internet");
+    if (s.model_loaded === null) setPill("device", "bad", "Ollama not running");
+    else setPill("device", s.model_loaded ? "good" : "", `${s.device} · ${s.model}` + (s.model_loaded ? " in RAM" : " loading…"));
+    $("held-count").hidden = !s.held;
+    $("held-count").textContent = s.held;
+  } catch {
+    setPill("net", "bad", "Gateway unreachable");
+  }
+}
+
+function showTab(name) {
+  if (name === "review") stopGateRun();  // the reviewer's questions get the model to themselves
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.id === "tab-" + name));
+  if (name === "review") loadCases();
+}
+document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+
+// Read a stream of JSON lines from the gateway and hand each event to onEvent.
+async function stream(url, body, onEvent, signal) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+  if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) if (line.trim()) onEvent(JSON.parse(line));
+  }
+}
+
+function timerOn(node, prefix) {
+  const started = performance.now();
+  const tick = () => { node.textContent = `${prefix} ${((performance.now() - started) / 1000).toFixed(1)} s`; };
+  tick();
+  return setInterval(tick, 100);
+}
+
+// The top reasons only, one per kind, so the decision reads at a glance.
+function topReasons(reasons, limit = 3) {
+  const seen = new Set();
+  const unique = reasons.filter((r) => !seen.has(r.category) && seen.add(r.category));
+  const list = el("ul", "reasons");
+  unique.slice(0, limit).forEach((r) => {
+    const li = el("li", "", r.label);
+    if (r.evidence) li.append(el("span", "ev", "“" + r.evidence + "”" + (r.verified === false ? " (not found in email)" : "")));
+    list.append(li);
+  });
+  const box = el("div");
+  box.append(list);
+  if (unique.length > limit) box.append(el("div", "more", `+ ${unique.length - limit} more in the review`));
+  return box;
+}
+
+function bookingJson(booking) {
+  return el("pre", "json", JSON.stringify(booking, null, 2));
+}
+
+// ---------- ① gate ----------
+async function loadSamples() {
+  const samples = await (await fetch("/api/samples")).json();
+  samples.forEach((s, i) => {
+    const b = el("button", "", `${i + 1}. ${s.title}`);
+    b.onclick = () => { $("email").value = s.text; };
+    $("samples").append(b);
+  });
+  if (samples.length && !$("email").value) $("email").value = samples[0].text;
+}
+
+async function runGate() {
+  const text = $("email").value.trim();
+  if (!text) return;
+  stopGateRun();
+  const run = new AbortController();
+  gateRun = run;
+  const out = $("gate-out");
+  const steps = el("div", "steps");
+  const rulesStep = el("span", "step busy", "Rules…");
+  const aiStep = el("span", "step", "Local AI check");
+  const jsonStep = el("span", "step", "Booking JSON");
+  steps.append(rulesStep, aiStep, jsonStep);
+  const live = el("div", "live");
+  out.replaceChildren(el("h2", "", "Decision"), steps);
+
+  let aiTimer = null, jsonTimer = null, box = null, raw = null, decision = null;
+  try {
+    await stream("/api/screen", { text }, (ev) => {
+      if (ev.type === "rules") {
+        rulesStep.className = "step done";
+        rulesStep.textContent = `Rules ✓ ${ev.rules.ms} ms`;
+        const decided = ev.rules.hard.length || !ev.rules.soft.length;
+        aiStep.textContent = decided ? "Local AI check: not needed" : "Local AI check starting…";
+      } else if (ev.type === "ai_start") {
+        aiStep.className = "step busy";
+        aiTimer = timerOn(aiStep, "Local AI reading on this device…");
+        out.append(live);
+      } else if (ev.type === "token" && ev.stage === "gate") {
+        live.textContent = (live.textContent + ev.text).slice(-140);
+      } else if (ev.type === "ai_done") {
+        clearInterval(aiTimer);
+        aiStep.className = "step done";
+        aiStep.textContent = ev.stats ? `Local AI check ✓ ${ev.stats.seconds} s` : "Local AI check failed: held";
+        live.remove();
+      } else if (ev.type === "case") {
+        decision = ev.case.decision;
+        renderDecision(out, ev.case);
+      } else if (ev.type === "extract_start") {
+        jsonStep.className = "step busy";
+        jsonTimer = timerOn(jsonStep, "Local AI extracting booking JSON…");
+        box = el("div", "ai-box");
+        const title = el("div", "title", "Booking details · structured by local AI");
+        title.append(el("span", "", "on this device"));
+        raw = el("pre", "json", "");
+        box.append(title, raw);
+        out.append(box);
+      } else if (ev.type === "token" && ev.stage === "extract") {
+        raw.textContent += ev.text;
+      } else if (ev.type === "booking") {
+        clearInterval(jsonTimer);
+        jsonStep.className = "step done";
+        if (ev.error) {
+          jsonStep.textContent = "Booking JSON: failed";
+          box.append(el("div", "error-box", ev.error));
+          return;
+        }
+        jsonStep.textContent = `Booking JSON ✓ ${ev.stats.seconds} s`;
+        raw.replaceWith(bookingJson(ev.booking));
+        box.append(ev.to_elm ? el("span", "tag elm", "→ Handed to ELM as structured data")
+                             : el("span", "tag box", "→ Stays on this box with the held case"));
+        if (ev.unverified.length) box.append(el("div", "warn-line", `⚠ HS ${ev.unverified.join(", ")} not found in the email: AI guess, not used`));
+      }
+    }, run.signal);
+  } catch (err) {
+    if (err.name === "AbortError") {
+      clearInterval(aiTimer);
+      clearInterval(jsonTimer);
+      if (jsonStep.classList.contains("busy")) jsonStep.textContent = "Booking JSON: stopped";
+    } else {
+      out.append(el("div", "error-box", "Request failed: " + err.message));
+    }
+  } finally {
+    clearInterval(aiTimer);
+    clearInterval(jsonTimer);
+    if (gateRun === run) gateRun = null;
+    refreshStatus();
+  }
+}
+
+function renderDecision(out, c) {
+  const banner = el("div", "banner " + (c.decision === "CLEAR" ? "clear" : "hold"));
+  if (c.decision === "CLEAR") {
+    banner.append(el("div", "big", "🟢 CLEAR → Sent to ELM ✓"),
+      el("div", "sub", "Nothing to review. The booking continues in ELM as normal."),
+      el("div", "logged", `Logged ✓ ${hhmm(c.received)} · ${c.decided_by} · case ${c.id}`));
+    out.append(banner);
+  } else {
+    const open = el("button", "", "Review case →");
+    open.onclick = () => { selectedCase = c.id; showTab("review"); };
+    banner.append(el("div", "big", "🔴 HOLD → Kept on this box"),
+      el("div", "sub", "Not sent to ELM or any cloud AI until Compliance decides."),
+      el("div", "logged", `Logged ✓ ${hhmm(c.received)} · ${c.decided_by} · case ${c.id}`), open);
+    out.append(banner, topReasons(c.reasons));
+  }
+}
+
+// ---------- ② review ----------
+async function loadCases() {
+  const cases = await (await fetch("/api/cases")).json();
+  const list = $("case-list");
+  list.replaceChildren();
+  if (!cases.length) list.append(el("li", "placeholder", "No cases yet."));
+  if (!selectedCase) selectedCase = cases.find((c) => c.status === "held")?.id || null;
+  for (const c of cases) {
+    const li = el("li", c.id === selectedCase ? "selected" : "");
+    const top = el("div");
+    top.append(el("strong", "", c.id + " "), el("span", "status " + c.status, STATUS_TEXT[c.status] || c.status));
+    li.append(top, el("div", "", c.subject), el("div", "meta", c.decided_by));
+    li.onclick = () => { selectedCase = c.id; loadCases(); };
+    list.append(li);
+  }
+  renderCase(cases.find((c) => c.id === selectedCase));
+}
+
+function highlightedMail(c) {
+  const evidence = c.reasons.map((r) => (r.evidence || "").trim()).filter(Boolean);
+  const box = el("div", "mail");
+  for (const line of c.raw.split("\n")) {
+    const hit = line.trim() && evidence.some((e) => line.includes(e));
+    box.append(hit ? el("mark", "", line) : document.createTextNode(line), document.createTextNode("\n"));
+  }
+  return box;
+}
+
+function answerCard(qa) {
+  const card = el("div", "answer");
+  const copy = el("button", "copy", "Copy");
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(qa.answer || ""); }
+    catch {  // older browsers, or a page served without HTTPS
+      const ta = el("textarea");
+      ta.value = qa.answer || "";
+      document.body.append(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    copy.textContent = "Copied ✓";
+    setTimeout(() => (copy.textContent = "Copy"), 1500);
+  };
+  const head = el("div", "q-row");
+  head.append(el("div", "q", "Q: " + qa.question), copy);
+  card.append(head, el("div", "a", qa.answer || ""));
+  if (qa.sources?.length) card.append(el("div", "src", "Sources: " + qa.sources.map((s) => `${s.doc} › ${s.section}`).join(" · ")));
+  if (qa.stats) card.append(el("div", "src", `${qa.stats.model} · ${qa.stats.seconds} s · on this device`));
+  return card;
+}
+
+function askBox(c) {
+  const box = el("div", "ai-box");
+  const title = el("div", "title", "Ask Forto's knowledge base");
+  title.append(el("span", "", "answered by local AI from documents on this box"));
+  const chips = el("div", "chips");
+  const row = el("div", "ask-row");
+  const input = el("input");
+  input.type = "text";
+  input.placeholder = "Ask about this booking…";
+  const ask = el("button", "", "Ask");
+  row.append(input, ask);
+  const answers = el("div");
+  (c.qa || []).slice().reverse().forEach((qa) => answers.append(answerCard(qa)));
+
+  const send = async (question) => {
+    question = question.trim();
+    if (!question) return;
+    input.value = question;
+    ask.disabled = true;
+    chips.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    const card = el("div", "answer");
+    const a = el("div", "a", "");
+    const src = el("div", "src", "Searching the knowledge base…");
+    card.append(el("div", "q", "Q: " + question), a, src);
+    answers.prepend(card);
+    let timer = null;
+    try {
+      await stream(`/api/cases/${c.id}/ask`, { question, reviewer: reviewerName() }, (ev) => {
+        if (ev.type === "sources") {
+          timer = timerOn(src, `Found ${ev.sources.length} section(s) · local AI answering…`);
+        } else if (ev.type === "token") {
+          a.textContent += ev.text;
+        } else if (ev.type === "answer") {
+          clearInterval(timer);
+          card.replaceWith(answerCard(ev.qa));
+          loadHistory(c.id);
+        } else if (ev.type === "error") {
+          clearInterval(timer);
+          src.replaceWith(el("div", "error-box", ev.text));
+        }
+      });
+    } catch (err) {
+      card.append(el("div", "error-box", "Request failed: " + err.message));
+    } finally {
+      clearInterval(timer);
+      ask.disabled = false;
+      chips.querySelectorAll("button").forEach((b) => (b.disabled = false));
+    }
+  };
+  SUGGESTED.forEach((q) => {
+    const b = el("button", "chip", q);
+    b.onclick = () => send(q);
+    chips.append(b);
+  });
+  ask.onclick = () => send(input.value);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(input.value); });
+  box.append(title, chips, row, answers);
+  return box;
+}
+
+function decisionForm(c) {
+  const form = el("div");
+  form.append(el("h3", "", "Your decision"));
+  const nameLabel = el("label", "", "Reviewer name");
+  const name = el("input");
+  name.type = "text";
+  name.id = "reviewer-name";
+  name.value = reviewerName();
+  const reasonLabel = el("label", "", "Reason (required to reject; optional comment when approving)");
+  const reason = el("textarea");
+  reason.rows = 2;
+  reason.placeholder = "e.g. End-use statement missing for the drone components";
+  const msg = el("div");
+  const approve = el("button", "primary", "Approve → send to ELM");
+  const reject = el("button", "danger", "Reject");
+  const send = async (action) => {
+    if (!name.value.trim()) { msg.replaceChildren(el("div", "error-box", "Enter the reviewer's name.")); return; }
+    if (action === "reject" && !reason.value.trim()) {
+      msg.replaceChildren(el("div", "error-box", "Enter a rejection reason: it goes into the audit log."));
+      reason.focus();
+      return;
+    }
+    try { localStorage.setItem("zc-reviewer", name.value.trim()); } catch {}
+    approve.disabled = reject.disabled = true;
+    const res = await fetch(`/api/cases/${c.id}/decision`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, reviewer: name.value, comment: reason.value }),
+    });
+    const data = await res.json();
+    if (!res.ok) { msg.replaceChildren(el("div", "error-box", data.error)); approve.disabled = reject.disabled = false; return; }
+    await loadCases();
+    refreshStatus();
+  };
+  approve.onclick = () => send("approve");
+  reject.onclick = () => send("reject");
+  const actions = el("div", "actions");
+  actions.append(approve, reject);
+  form.append(nameLabel, name, reasonLabel, reason, actions, msg);
+  return form;
+}
+
+async function loadHistory(caseId) {
+  const box = $("history");
+  if (!box) return;
+  const entries = await (await fetch(`/api/cases/${caseId}/history`)).json();
+  const list = el("ul", "history");
+  for (const e of entries) {
+    const li = el("li");
+    li.append(el("span", "when", hhmm(e.time) + "  "), el("span", "what", EVENT_TEXT[e.event] || e.event),
+      el("span", "", ` · ${e.actor} · ${e.details}`));
+    list.append(li);
+  }
+  box.replaceChildren(list);
+}
+
+function renderCase(c) {
+  const out = $("case-detail");
+  out.replaceChildren(el("h2", "", "Compliance review"));
+  if (!c) { out.append(el("div", "placeholder", "Select a held case.")); return; }
+  out.append(el("div", "", `${c.id} · ${c.subject}`));
+
+  if (c.status === "held") {
+    out.append(el("div", "hint", `Held by ${c.decided_by}. It stays on this box until you decide.`), topReasons(c.reasons, 5));
+  } else {
+    const banner = el("div", "banner " + (c.status === "rejected" ? "rejected" : "clear"));
+    if (c.status === "approved") banner.append(el("div", "big", "✓ Approved → Sent to ELM ✓"));
+    else if (c.status === "rejected") banner.append(el("div", "big", "Rejected → customer follow-up"));
+    else banner.append(el("div", "big", "🟢 Cleared by the gateway → Sent to ELM ✓"));
+    if (c.review) banner.append(el("div", "sub", `${c.review.reviewer}${c.review.comment ? ": " + c.review.comment : ""}`));
+    const who = c.review ? `${hhmm(c.review.time)} · ${c.review.reviewer}` : `${hhmm(c.received)} · gateway`;
+    banner.append(el("div", "logged", `Logged ✓ ${who} · case ${c.id}`));
+    out.append(banner);
+  }
+
+  out.append(highlightedMail(c));
+  if (c.booking) {
+    const details = el("details");
+    details.append(el("summary", "", "Booking details (structured by local AI)"), bookingJson(c.booking));
+    out.append(details);
+  }
+  out.append(askBox(c));
+  if (c.status === "held") out.append(decisionForm(c));
+  const history = el("div");
+  history.id = "history";
+  out.append(el("h3", "", "Case history (audit log)"), history);
+  loadHistory(c.id);
+}
+
+$("reset").onclick = async () => {
+  if (!confirm("Clear all demo cases? The audit log on the Pi is kept.")) return;
+  stopGateRun();
+  await fetch("/api/reset", { method: "POST" });
+  selectedCase = null;
+  $("gate-out").replaceChildren(el("h2", "", "Decision"), el("div", "placeholder", "Pick a sample email and press Run step 0."));
+  showTab("gate");
+  refreshStatus();
+};
+
+$("screen").onclick = runGate;
+fetch("/api/rules").then((r) => r.json()).then((r) => { $("disclaimer").textContent += " " + r.disclaimer; });
+loadSamples();
+refreshStatus();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>

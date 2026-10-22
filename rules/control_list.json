@@ -1,0 +1,29 @@
+{
+  "version": "DEMO-2026-10-22b",
+  "disclaimer": "Illustrative demo extract, not legal advice. Production must sync the official dual-use and control lists and be validated by Forto Compliance. Sanctions screening stays in TMS.",
+  "controlled_hs_prefixes": [
+    {"prefix": "8542", "label": "Integrated circuits: export-control check required (illustrative)"},
+    {"prefix": "851762", "label": "Data transmission equipment: export-control check required (illustrative)"},
+    {"prefix": "852691", "label": "Radio navigation receivers: export-control check required (illustrative)"},
+    {"prefix": "8806", "label": "Unmanned aircraft: export-control check required (illustrative)"},
+    {"prefix": "8807", "label": "Parts of aircraft and drones: export-control check required (illustrative)"}
+  ],
+  "military_dual_use_keywords": [
+    "military", "defence", "defense", "armed forces", "ammunition", "weapon", "weapons", "missile",
+    "warhead", "firearm", "uav", "drone", "drones", "dual-use", "dual use", "end-user certificate",
+    "end use certificate", "itar", "export licence", "export license", "night vision"
+  ],
+  "confidential_markers": [
+    "strictly confidential", "not to be disclosed", "non-disclosure", "nda", "streng vertraulich"
+  ],
+  "technical_spec_markers": [
+    "operating frequency", "positioning accuracy", "accuracy", "tolerance", "tensile strength", "datasheet values"
+  ],
+  "technical_spec_units_regex": "\\b\\d+(?:[.,]\\d+)?\\s?(?:GHz|MHz|µm|nm|kN|MPa|GPa|dBm)\\b",
+  "personal_id_regex": "\\b(?:passport|id card|personalausweis)\\s*(?:no\\.?|number|nr\\.?)?\\s*[:#]?\\s*[A-Z0-9]{6,}",
+  "soft_keywords": [
+    "specification", "spec sheet", "datasheet", "components", "parts", "high-performance",
+    "aerospace", "unmanned", "carbon fibre", "carbon fiber", "flight controller",
+    "confidential", "vertraulich"
+  ]
+}

@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZeroCloud Build Guide</title>
+<style>
+  :root { --bg:#f6f7f4; --card:#fff; --ink:#16191d; --muted:#5b636c; --line:#dfe2dc; --accent:#0f6b4f;
+          --code-bg:#eef1ec; --pre-bg:#101418; --pre-ink:#d7f5e3; --quote:#e5f4ec; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111416; --card:#181c1f; --ink:#e8eaec; --muted:#9aa3ab; --line:#2a3035; --accent:#4cc79a;
+            --code-bg:#232a2e; --pre-bg:#0b0e10; --pre-ink:#c6f1d8; --quote:#16302a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 34px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h2 { font-size: 25px; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 19px; margin: 28px 0 8px; }
+  h2, h3 { scroll-margin-top: 52px; }
+  a { color: var(--accent); }
+  code { font: 0.88em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg);
+         padding: 1px 5px; border-radius: 4px; }
+  .pre-wrap { position: relative; margin: 10px 0 14px; }
+  pre { margin:0; background: var(--pre-bg); color: var(--pre-ink); padding: 14px 16px; border-radius: 8px;
+        overflow-x: auto; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+  .copy { position: absolute; top: 8px; right: 8px; font: 13px -apple-system, sans-serif; cursor: pointer;
+          background: #2b3338; color: #fff; border: 0; border-radius: 6px; padding: 4px 10px; }
+  .copy:hover { background: var(--accent); }
+  .table-wrap { overflow-x: auto; margin: 12px 0; }
+  table { border-collapse: collapse; width: 100%; background: var(--card); font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--code-bg); }
+  blockquote { margin: 16px 0; padding: 12px 18px; background: var(--quote); border-left: 4px solid var(--accent);
+               border-radius: 0 8px 8px 0; }
+  blockquote p { margin: 6px 0; }
+  ul { padding-left: 24px; }
+  li { margin: 4px 0; }
+  li.task-list-item { list-style: none; margin-left: -22px; }
+  li.task-list-item input.task-list-item-checkbox { width: 17px; height: 17px; margin-right: 8px; vertical-align: -2px; cursor: pointer;
+                              accent-color: var(--accent); }
+  li.task-list-item.done > p, li.task-list-item.done { color: var(--muted); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+  .toc { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; margin: 20px 0; }
+  .toc b { display:block; margin-bottom: 4px; }
+  .toc a { display: inline-block; margin: 2px 14px 2px 0; }
+  .progress { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+              padding: 8px 20px; font-size: 14px; color: var(--muted); text-align: center; }
+  .progress span { color: var(--accent); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<main>
+<h1>ZeroCloud AI: 5-hour build guide</h1>
+<p><strong>AI that never talks to a datacenter.</strong> A small language model runs on a Raspberry Pi 5 as a
+<strong>compliance gateway: step 0 before ELM.</strong> Every inbound booking email is screened on our own hardware first.
+Ordinary bookings go on to ELM; anything with dual-use goods, technical data or confidential material is held on-prem
+until a compliance manager approves it. Sanctions screening stays in TMS, which already covers it.</p>
+<p>You will end with this setup on stage:</p>
+<pre><code>MacBook (browser only)                         Raspberry Pi 5 (8 GB) = the whole &quot;datacenter&quot;
+http://10.42.0.1:8080  ──Wi-Fi &quot;ZeroCloud&quot;──▶  ├─ ZeroCloud app  port 8080   gateway + compliance review
+                         (broadcast by the Pi,  └─ Ollama          port 11434  llama3.2:3b model, kept in RAM
+                          no internet uplink)
+</code></pre>
+<p><strong>The one insight:</strong> <em>some booking emails must not reach cloud AI, and you only know which ones after reading them.
+So the reading has to happen on our own box. ZeroCloud is that step zero before ELM.</em></p>
+<p>The demo story: <em>a booking email arrives → rules screen it in a millisecond → the local AI reads the unclear ones →
+clean bookings go to ELM, sensitive ones are held on the box → a compliance manager approves or rejects → every decision is logged.</em></p>
+<pre><code>Inbound booking email
+        │
+        ▼
+┌──────────── STEP 0: ZeroCloud compliance gateway (own server) ────────────┐
+│ 1. Fast rules (every email): control-list HS codes, military/dual-use     │
+│    wording, technical specs, confidential contract terms, ID numbers      │
+│ 2. Local language model (only emails the rules can't decide)              │
+│ 3. Decision, fail-closed:                                                 │
+│      CLEAR ─────────────────────────────────────────▶ ELM (normal flow)   │
+│      HOLD ──▶ on-prem review queue ──▶ compliance manager                 │
+│                                         ├─ Approve ──▶ ELM (+ audit log)  │
+│                                         └─ Reject  ──▶ customer follow-up │
+└────────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<hr />
+<h2 id="part-0-the-basics-read-once-10-minutes">Part 0: The basics (read once, 10 minutes)</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>What it means</th>
+<th>Why it matters here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SLM (small language model)</strong></td>
+<td>A language model with roughly 0.5 to 4 billion &quot;parameters&quot; (learned numbers), versus hundreds of billions for cloud models.</td>
+<td>Small enough to fit in the Pi's 8 GB RAM and run on its CPU.</td>
+</tr>
+<tr>
+<td><strong>Inference</strong></td>
+<td><em>Using</em> a trained model to produce answers. Training it is a separate, far bigger job.</td>
+<td>We only do inference. Training needs datacenter GPUs; running a model does not.</td>
+</tr>
+<tr>
+<td><strong>Quantization</strong></td>
+<td>Storing each parameter in ~4 bits instead of 16. A 3B model shrinks from ~6 GB to ~2 GB.</td>
+<td>Makes it fit in RAM and run faster, with a small loss in quality. Ollama's models come pre-quantized.</td>
+</tr>
+<tr>
+<td><strong>Token</strong></td>
+<td>A chunk of text the model reads or writes, roughly ¾ of a word.</td>
+<td>Speed is measured in tokens per second. Expect ~5–7 tok/s for a 3B model on a Pi 5.</td>
+</tr>
+<tr>
+<td><strong>Ollama</strong></td>
+<td>A free program that downloads models and runs them, with a local web API on port 11434.</td>
+<td>Handles all the hard parts (llama.cpp, ARM optimizations) with one install command.</td>
+</tr>
+<tr>
+<td><strong>Headless</strong></td>
+<td>Running a computer with no screen or keyboard attached.</td>
+<td>You only have the MacBook, so you control the Pi from the Mac's Terminal.</td>
+</tr>
+<tr>
+<td><strong>SSH</strong></td>
+<td>&quot;Secure shell&quot;: typing commands on the Pi from the Mac's Terminal over the network.</td>
+<td>Your only way into a headless Pi.</td>
+</tr>
+<tr>
+<td><strong><code>zerocloud.local</code></strong></td>
+<td>mDNS: the Pi announces its name on the local network so you don't need its IP address.</td>
+<td>Lets you type <code>ssh zero@zerocloud.local</code> instead of hunting for an IP.</td>
+</tr>
+<tr>
+<td><strong>systemd service</strong></td>
+<td>Linux's way to start a program automatically at boot and restart it if it crashes.</td>
+<td>On stage you just plug in the power. Ollama installs itself as one; we add one for the app.</td>
+</tr>
+<tr>
+<td><strong>Hotspot (access point)</strong></td>
+<td>The Pi creates its own Wi-Fi network instead of joining one.</td>
+<td>The off-grid proof: the Mac connects only to the Pi, and nothing connects to the internet.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why the Pi 5 can do this:</strong> its four Cortex-A76 cores (2.4 GHz) support the ARM vector
+instructions (NEON, dot-product) that make model math fast on a CPU, and the 8 GB of LPDDR4X RAM
+holds a 2 GB model with room to spare. It has no GPU that helps, so everything runs on the CPU,
+and that is fine for a small model.</p>
+<p><strong>Why &quot;AI reads, the lists decide&quot;:</strong> a 3B model is good at reading messy human text but can make
+mistakes, and no model can promise &quot;zero hallucination&quot;. So the design makes a mistake harmless instead:</p>
+<ul>
+<li>The model only <strong>reads and flags</strong>. It can never clear a shipment on its own.</li>
+<li>Every finding points to the sentence it came from. A quote or HS code that isn't in the email is marked
+&quot;not found&quot; and never used.</li>
+<li>HS codes are checked against a <strong>control list file</strong> by plain code, as Compliance asked
+(&quot;an AI parser must link to official, deterministic control lists&quot;).</li>
+<li><strong>Fail-closed:</strong> an uncertain answer, a missing HS code or a model error means HOLD, never CLEAR.
+The worst case is a false alarm a human checks.</li>
+</ul>
+<hr />
+<h2 id="your-5-hour-timeline">Your 5-hour timeline</h2>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Phase</th>
+<th>Done when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0:00–0:20</td>
+<td>1. Assemble the Pi, install Imager on the Mac</td>
+<td>Cooler attached, Imager open</td>
+</tr>
+<tr>
+<td>0:20–0:50</td>
+<td>2. Flash the SD card and boot</td>
+<td><code>ssh zero@zerocloud.local</code> works</td>
+</tr>
+<tr>
+<td>0:50–1:15</td>
+<td>3. Update and health-check the Pi</td>
+<td><code>free -h</code> shows ~8 GB, no throttling</td>
+</tr>
+<tr>
+<td>1:15–2:00</td>
+<td>4. Install Ollama and models, first chat</td>
+<td>You chatted with the model, noted tok/s</td>
+</tr>
+<tr>
+<td>2:00–2:45</td>
+<td>5. Deploy and test the ZeroCloud gateway</td>
+<td>All 4 sample emails give the expected decision</td>
+</tr>
+<tr>
+<td>2:45–3:30</td>
+<td>6. Go off-grid: autostart + hotspot</td>
+<td>Cold boot → Mac on &quot;ZeroCloud&quot; Wi-Fi → app works</td>
+</tr>
+<tr>
+<td>3:30–4:30</td>
+<td>7. Slides, rehearsal, backup video</td>
+<td>3 timed run-throughs under 3:00</td>
+</tr>
+<tr>
+<td>4:30–5:00</td>
+<td>Buffer</td>
+<td>Something always breaks. This is for that.</td>
+</tr>
+</tbody>
+</table>
+<p>If you fall behind, cut from Phase 7 (fewer rehearsals), never from Phase 6: the cold-boot test is what makes the live demo safe.</p>
+<hr />
+<h2 id="phase-1-assemble-000020">Phase 1: Assemble (0:00–0:20)</h2>
+<p><strong>On the Pi (hardware):</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <strong>Attach the cooler or case fan from the kit.</strong> If it's the official Active Cooler, peel the thermal-pad film,
+push the two spring pins into the holes beside the CPU, and plug its cable into the <strong>FAN</strong> connector.
+<strong>Why:</strong> running a language model keeps all 4 cores at 100%. Without cooling the Pi passes 80 °C,
+slows itself down (&quot;throttling&quot;), and your demo gets slower mid-talk.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <strong>Find the microSD card in the kit</strong> (a fingernail-sized card, often packed with a larger SD-size adapter).
+If it's already inside the Pi's card slot, pull it out. The slot is on the <strong>underside</strong> of the board,
+at the short edge opposite the USB ports, and the card just slides out (there's no click mechanism).
+<strong>Why:</strong> the microSD card is the Pi's hard drive. The operating system, Ollama and the model all live on it,
+and the Pi has no built-in storage. Even if your card came with an OS pre-installed, you'll overwrite it in
+Phase 2, because the Pi needs your Wi-Fi details and SSH switched on <em>before</em> its first boot.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Put the board in the case. Note where the case's opening for the card slot is, because you'll insert the card through it later.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <strong>Work out how the card will get into your MacBook:</strong>
+<ul>
+<li><strong>MacBook Pro 14&quot; or 16&quot; (2021 or later)</strong> has an SD card slot on the right side. Put the microSD into the full-size SD adapter and use that slot.</li>
+<li><strong>MacBook Air, or an older 13&quot; MacBook Pro,</strong> has no card slot, so you need a <strong>USB-C card reader</strong>. Check the kit, since some Berrybase kits include one.
+If you don't have one, ask the hackathon organisers <strong>now</strong>.
+<strong>Why this is a blocker:</strong> the Mac has to write the operating system onto the card. With no screen or keyboard on the Pi, there's no other way to install it.</li>
+</ul>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Have the <strong>USB-C power supply from the kit</strong> (27 W, 5 V / 5 A) ready, but <strong>don't plug it in yet.</strong>
+<strong>Why this supply:</strong> a MacBook charger or phone charger often can't deliver 5 A at 5 V. The Pi then
+throttles or warns about under-voltage under AI load.</li>
+</ul>
+<blockquote>
+<p><strong>End of Phase 1: what you should have</strong></p>
+<ul>
+<li>The Pi in its case with the cooler attached, <strong>no card inside, power not connected.</strong></li>
+<li>The microSD card (in its adapter or card reader) next to your MacBook.</li>
+<li>The power supply unplugged.</li>
+</ul>
+<p><strong>Why not power on yet?</strong> With no card, or a card without your settings, the Pi has nothing useful to start,
+and you couldn't reach it from the Mac anyway. The very first power-on happens at the end of Phase 2, once the
+card holds the OS plus your Wi-Fi and SSH settings. That first boot is when the Pi applies them.</p>
+</blockquote>
+<p><strong>On the MacBook:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Install <strong>Raspberry Pi Imager</strong> from <a href="https://www.raspberrypi.com/software/">https://www.raspberrypi.com/software/</a> (or <code>brew install --cask raspberry-pi-imager</code> if you use Homebrew).
+<strong>Why:</strong> it downloads the operating system and writes it to the microSD card. It can also pre-configure
+Wi-Fi, username and SSH, which is what makes a headless setup possible.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Decide which Wi-Fi the Pi joins for setup (it needs internet once, to download Ollama and the models, ~4 GB in total):
+<ul>
+<li><strong>Venue Wi-Fi</strong>, only if it's plain WPA2 with a password. <strong>Not</strong> one with a login web page (captive portal): the Pi can't click through it.</li>
+<li><strong>Your phone's hotspot</strong> is the safe fallback. Both the Mac and the Pi must be on the <strong>same</strong> network.</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h2 id="phase-2-flash-the-sd-card-and-boot-020050">Phase 2: Flash the SD card and boot (0:20–0:50)</h2>
+<p><strong>On the MacBook:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Connect the microSD card to the Mac:
+<ul>
+<li><strong>SD slot:</strong> slide the microSD into the SD adapter. If the adapter has a small <strong>lock switch</strong> on its side, push it toward the gold contacts (unlocked).
+A locked adapter makes the write fail. Insert the adapter into the Mac's slot, label up, contacts first.</li>
+<li><strong>USB-C card reader:</strong> put the microSD in the reader's micro slot and plug the reader into the Mac.</li>
+<li>macOS may show the card on the desktop or in Finder, or show nothing at all. Both are fine.
+If macOS asks whether Raspberry Pi Imager may access <strong>removable volumes</strong>, click <strong>Allow</strong>.</li>
+</ul>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Open Raspberry Pi Imager and choose:
+<ul>
+<li><strong>Device:</strong> Raspberry Pi 5</li>
+<li><strong>OS:</strong> <em>Raspberry Pi OS (other)</em> → <strong>Raspberry Pi OS Lite (64-bit)</strong>
+<strong>Why Lite:</strong> no desktop, because you have no screen. That leaves more RAM and CPU for the model, and it boots faster.
+<strong>Why 64-bit:</strong> Ollama only supports 64-bit ARM.</li>
+<li><strong>Storage:</strong> your microSD card (check the size so you don't wipe a different drive)</li>
+</ul>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> In the <strong>customisation / OS settings</strong> step, set:
+<ul>
+<li><strong>Hostname:</strong> <code>zerocloud</code></li>
+<li><strong>Username:</strong> <code>zero</code> and a password you'll remember (this guide uses <code>zero</code> everywhere)</li>
+<li><strong>Wi-Fi:</strong> the SSID and password of your setup network; <strong>Wi-Fi country: DE</strong> (or wherever you are)
+<strong>Why the country:</strong> Wi-Fi channels are legally regulated per country. Without it, the Pi's Wi-Fi stays off.</li>
+<li><strong>Locale/time zone:</strong> Europe/Berlin, keyboard as you like</li>
+<li><strong>Services / Remote access:</strong> <strong>Enable SSH</strong> with password authentication
+<strong>Why:</strong> SSH is your only way in, and it's off by default for security.</li>
+</ul>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Click <strong>Write</strong> and confirm that the card will be erased. Writing plus verifying takes ~5–10 minutes. Enter your Mac password if asked.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> When Imager says it's finished, it ejects the card for you. If macOS then shows <strong>&quot;The disk you inserted was not readable&quot;</strong>,
+click <strong>Eject</strong> (never <em>Initialize</em>: that would erase what you just wrote).
+<strong>Why the warning:</strong> part of the card is now in Linux's format (ext4), which macOS can't read. That's expected.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Take the microSD out of the adapter or reader.</li>
+</ul>
+<p><strong>On the Pi (hardware), the first power-on:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Slide the microSD into the slot on the <strong>underside</strong> of the Pi, through the opening in the case: label facing away from the board,
+gold contacts facing the board. Push gently until it stops. A millimetre or two sticking out is normal.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Plug the kit's USB-C power supply into the Pi's <strong>USB-C port</strong> (labelled <em>PWR IN</em>), then into the wall.
+The Pi 5 <strong>turns on by itself</strong> when power arrives, so you don't need to press its small power button.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Watch the LED next to the power button: it should flicker <strong>green</strong> (the Pi is reading the card). If it stays <strong>red only</strong>,
+the card isn't inserted properly or wasn't written correctly.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <strong>Wait 2–3 minutes.</strong> The first boot resizes the file system and applies your settings, and may reboot once by itself.</li>
+</ul>
+<p><strong>On the MacBook (Terminal app, ⌘+Space → &quot;Terminal&quot;):</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Connect to the Pi:<pre><code class="language-bash">ssh zero@zerocloud.local
+</code></pre>
+Type <code>yes</code> to trust the fingerprint, then your password (nothing appears as you type; that's normal).
+If macOS asks to allow Terminal to &quot;find devices on your local network&quot;, click <strong>Allow</strong>.
+<strong>Why:</strong> you're now typing commands <em>on the Pi</em>. Your prompt changes to <code>zero@zerocloud:~ $</code>.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> If <code>zerocloud.local</code> isn't found after 5 minutes, see <a href="#troubleshooting">Troubleshooting</a>.</li>
+</ul>
+<p>From here on, <strong>&quot;On the Pi&quot;</strong> means: type it in the SSH session. <strong>&quot;On the Mac&quot;</strong> means: a <em>new</em> Terminal window (⌘+N) that is <em>not</em> connected to the Pi.</p>
+<hr />
+<h2 id="phase-3-update-and-health-check-050115">Phase 3: Update and health-check (0:50–1:15)</h2>
+<p><strong>On the Pi:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Update all software (5–15 minutes):<pre><code class="language-bash">sudo apt update &amp;&amp; sudo apt full-upgrade -y
+</code></pre>
+<strong>Why:</strong> gets security fixes and the latest Pi firmware. <code>sudo</code> = &quot;run as administrator&quot;;
+<code>apt</code> = the Pi's app store for the command line.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Confirm the hardware:<pre><code class="language-bash">cat /proc/device-tree/model; echo
+free -h
+df -h /
+vcgencmd measure_temp
+vcgencmd get_throttled
+</code></pre>
+<strong>Expect:</strong> &quot;Raspberry Pi 5&quot;, ~7.9 GB total memory, at least 10 GB free disk, temperature under 60 °C,
+and <code>throttled=0x0</code>.
+<strong>Why:</strong> <code>0x0</code> means the power supply and cooling are fine. Anything else means a weak power supply or overheating, so fix that now, not on stage.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Reboot to apply the updates, then reconnect:<pre><code class="language-bash">sudo reboot
+</code></pre>
+Wait ~45 seconds, then on the Mac: <code>ssh zero@zerocloud.local</code></li>
+</ul>
+<hr />
+<h2 id="phase-4-install-ollama-and-the-models-115200">Phase 4: Install Ollama and the models (1:15–2:00)</h2>
+<p><strong>On the Pi:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Install Ollama:<pre><code class="language-bash">curl -fsSL https://ollama.com/install.sh | sh
+</code></pre>
+<strong>Why:</strong> this downloads Ollama for 64-bit ARM, creates an <code>ollama</code> system user, and installs it as a
+systemd service, so it already starts at every boot. A warning that <strong>no NVIDIA/AMD GPU</strong> was found
+is expected: we run on the CPU.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Check it's running:<pre><code class="language-bash">systemctl status ollama --no-pager
+</code></pre>
+Look for <code>active (running)</code>.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Download the main model and a faster backup (~2.0 GB + ~1.3 GB):<pre><code class="language-bash">ollama pull llama3.2:3b
+ollama pull llama3.2:1b
+</code></pre>
+<strong>Why Llama 3.2 (by Meta):</strong> its license allows commercial use, so the honest answer to &quot;could a company deploy this?&quot; is yes.
+It follows instructions well, and it officially supports German and Hindi as well as English.
+<strong>Why two:</strong> 3B is smarter; 1B is roughly two to three times faster. You'll pick one after measuring.
+This is the <strong>last time the Pi needs internet.</strong></li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Optional backup: <code>ollama pull qwen2.5:3b</code> (~1.9 GB). Qwen is often stronger at pulling exact codes and numbers out of
+documents, but its 3B version is licensed for research only. Handy if Llama gets fields wrong in Phase 5.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Your first conversation with on-device AI:<pre><code class="language-bash">ollama run llama3.2:3b --verbose
+</code></pre>
+Ask something, for example: <em>What does the Incoterm FCA mean, in two sentences?</em> Then type <code>/bye</code> to exit.
+<strong>Look at <code>eval rate</code></strong> in the stats it prints: that's the model's writing speed in tokens per second. Note it for your pitch
+(&quot;6 tokens per second on a €100 board, about 10 watts&quot;).</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Do the same for <code>llama3.2:1b</code> and note its eval rate too.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Optional: in a second SSH window, run <code>htop</code> (exit with <code>q</code>) while the model answers.
+You'll see all 4 cores at 100%: that's the &quot;datacenter&quot; working.</li>
+</ul>
+<hr />
+<h2 id="phase-5-deploy-and-test-the-app-200245">Phase 5: Deploy and test the app (2:00–2:45)</h2>
+<p>The app is already written and tested (see <a href="#whats-in-this-folder">What's in this folder</a>). It uses only
+Python's standard library, so <strong>there is nothing to <code>pip install</code></strong> (Raspberry Pi OS already ships Python 3).</p>
+<p><strong>On the Mac:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Copy the project to the Pi. Type <code>scp -r </code> (with a trailing space), <strong>drag the <code>zerocloud</code> folder from Finder into
+the Terminal window</strong>, then type <code> zero@zerocloud.local:~/</code> and press Enter. The line looks like:<pre><code class="language-bash">scp -r /path/to/zerocloud zero@zerocloud.local:~/
+</code></pre>
+<strong>Why drag and drop:</strong> it types the folder's exact path for you, spaces included.
+Re-run the same command whenever you change a file on the Mac.</li>
+</ul>
+<p><strong>On the Pi:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Start the app by hand the first time, so you can see its log:<pre><code class="language-bash">cd ~/zerocloud
+python3 app.py
+</code></pre>
+Wait for <code>model llama3.2:3b loaded and warm</code> (10–40 s: the model is being read from the SD card into RAM).
+<strong>Why by hand first:</strong> any error shows directly on screen. In Phase 6 it moves into the background.
+<strong>Already did Phase 6?</strong> Then the app runs as a service, and <code>python3 app.py</code> fails with &quot;Address already in use&quot;.
+Restart the service instead to load new files: <code>sudo systemctl restart zerocloud</code>.</li>
+</ul>
+<p><strong>On the Mac:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> Open <strong><a href="http://zerocloud.local:8080">http://zerocloud.local:8080</a></strong> in your browser.</p>
+<ul>
+<li>Top right should say the device is a Raspberry Pi 5 and <code>llama3.2:3b in RAM</code> (or <code>1b</code>).</li>
+<li>The network pill will be amber (&quot;Internet connected&quot;), because you're still on the setup Wi-Fi. That's expected for now.</li>
+</ul>
+</li>
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> On the <strong>① Gate</strong> tab, run the three sample emails with <strong>Run step 0</strong>. Expected results:</p>
+<table>
+<thead>
+<tr>
+<th>Sample (all fictional)</th>
+<th>Rules</th>
+<th>Local AI</th>
+<th>Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1. Clean booking</strong></td>
+<td>nothing found, ~1 ms</td>
+<td>not needed</td>
+<td>🟢 CLEAR → Sent to ELM ✓</td>
+</tr>
+<tr>
+<td><strong>2. Sensitive booking</strong></td>
+<td>controlled HS codes, confidential terms, spec sheet</td>
+<td>not needed</td>
+<td>🔴 HOLD → Kept on this box</td>
+</tr>
+<tr>
+<td><strong>3. Unclear booking</strong></td>
+<td>only unclear words</td>
+<td>reads it on the box</td>
+<td>🔴 HOLD: drone parts with possible military use</td>
+</tr>
+</tbody>
+</table>
+<p>Each decision shows a <strong>Logged ✓</strong> line with time, who decided and the case number. Below it, the local AI then
+fills in <strong>Booking details</strong> as structured JSON (shipper, consignee, route, mode, Incoterm, ready date, goods with HS codes):
+&quot;→ Handed to ELM as structured data&quot; for the clean booking, &quot;→ Stays on this box&quot; for held ones.
+An HS code the AI didn't copy from the email is flagged &quot;not found in the email&quot;.</p>
+</li>
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> On <strong>② Compliance review</strong>, open the held unclear booking (sample 3):</p>
+<ul>
+<li>Under <strong>Ask Forto's knowledge base</strong>, click <strong>What should I ask the customer?</strong> The local AI answers from the
+knowledge-base documents on the Pi and lists the sections it used.</li>
+<li>Click <strong>Reject</strong> with the reason box empty: it refuses (&quot;Enter a rejection reason&quot;). Type a reason, e.g.
+&quot;End-use statement missing for the drone components&quot;, and click <strong>Reject</strong> again.</li>
+<li><strong>Case history</strong> at the bottom shows every step: screened, booking extracted, knowledge base asked, rejected,
+with your name and reason.</li>
+</ul>
+</li>
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> Open the held sensitive booking (sample 2) and click <strong>Approve → send to ELM</strong>. It turns green: &quot;Approved → Sent to ELM ✓&quot;.</p>
+</li>
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> <strong>Check the AI speed</strong> on sample 3: the &quot;Local AI ✓ … s&quot; label after the decision. The model writes just four short
+fields, so expect roughly <strong>10–20 s</strong> with <code>llama3.2:3b</code> and <strong>5–10 s</strong> with <code>llama3.2:1b</code>:</p>
+<ul>
+<li><strong>Under ~20 s:</strong> keep <code>llama3.2:3b</code>. It judges unclear emails better than the 1B model.</li>
+<li><strong>Over ~20 s:</strong> switch the service to the faster model: <code>./setup/install-service.sh llama3.2:1b</code>, then test again.</li>
+<li><strong>Much slower than that?</strong> Check the Pi isn't overheating: <code>vcgencmd get_throttled</code> should show <code>0x0</code>. A Pi that's
+slowing itself down because the fan isn't working can take several times longer.</li>
+</ul>
+</li>
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> Before rehearsing, click <strong>Reset demo</strong> at the bottom of the page. It clears the cases; the audit log file on the Pi
+keeps a record (view it with <code>cat ~/zerocloud/data/audit.jsonl</code> if anyone asks).</p>
+</li>
+<li class="task-list-item enabled">
+<p><input class="task-list-item-checkbox"  type="checkbox"> Stop the app with <code>Ctrl+C</code>.</p>
+</li>
+</ul>
+<hr />
+<h2 id="phase-6-go-off-grid-245330">Phase 6: Go off-grid (2:45–3:30)</h2>
+<h3 id="6a-start-automatically-at-boot">6a. Start automatically at boot</h3>
+<p><strong>On the Pi:</strong></p>
+<pre><code class="language-bash">cd ~/zerocloud
+./setup/install-service.sh llama3.2:3b      # or llama3.2:1b if you picked that
+</code></pre>
+<p><strong>Why:</strong> this registers the app as a systemd service (like Ollama already is), so it starts on every boot and restarts if it crashes.
+Check it: refresh <a href="http://zerocloud.local:8080">http://zerocloud.local:8080</a> on the Mac. Live logs: <code>journalctl -u zerocloud -f</code> (exit with <code>Ctrl+C</code>).</p>
+<h3 id="6b-make-the-pi-its-own-wi-fi-network">6b. Make the Pi its own Wi-Fi network</h3>
+<p><strong>On the Pi:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> First, note the name of your current Wi-Fi connection (you'll need it to go back online):<pre><code class="language-bash">nmcli connection show
+</code></pre>
+</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Create the hotspot (pick a password of at least 8 characters, e.g. <code>freight2026</code>):<pre><code class="language-bash">./setup/hotspot.sh freight2026
+</code></pre>
+<strong>Why:</strong> NetworkManager (<code>nmcli</code>) turns the Pi's Wi-Fi chip into an access point called <strong>ZeroCloud</strong>. The Pi takes address <code>10.42.0.1</code>
+and hands out addresses to anyone who joins. There's no uplink, so nothing on this network can reach the internet.
+It's created <em>without</em> autostart on purpose: if anything goes wrong, unplugging and replugging the power brings the Pi back on your normal Wi-Fi.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Turn it on:<pre><code class="language-bash">sudo nmcli connection up ZeroCloud
+</code></pre>
+<strong>Your SSH session will freeze.</strong> That's expected, because the Pi just left the network you were connected through. Close that Terminal window.</li>
+</ul>
+<p><strong>On the Mac:</strong></p>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Click the Wi-Fi icon in the menu bar → join <strong>ZeroCloud</strong> with your password. macOS will say &quot;No Internet Connection&quot;. That's the point.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Open <strong><a href="http://10.42.0.1:8080">http://10.42.0.1:8080</a></strong>. The network pill should now be <strong>green: &quot;Air-gapped: no internet&quot;</strong>.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Run a sample to confirm it works fully offline.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> SSH back in over the hotspot: <code>ssh zero@10.42.0.1</code>, and prove it from the Pi's side:<pre><code class="language-bash">ping -c 2 1.1.1.1
+</code></pre>
+You should get a failure (&quot;Network is unreachable&quot; or 100% packet loss).</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> It works, so make the hotspot start at every boot:<pre><code class="language-bash">sudo nmcli connection modify ZeroCloud connection.autoconnect yes connection.autoconnect-priority 100
+</code></pre>
+</li>
+</ul>
+<h3 id="6c-the-cold-boot-test-the-most-important-test-of-the-day">6c. The cold-boot test (the most important test of the day)</h3>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> On the Pi: <code>sudo reboot</code>. Or better, pull the power cable and plug it back in, exactly as on stage.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Wait ~90 seconds. On the Mac, join <strong>ZeroCloud</strong> again and open <a href="http://10.42.0.1:8080">http://10.42.0.1:8080</a>.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Wait until the model pill shows <strong>in RAM</strong>, then run the messy booking email.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> If this works, your demo works. Bookmark <code>http://10.42.0.1:8080</code> in the browser.</li>
+</ul>
+<p><strong>To go back online later</strong> (for example to change something that needs internet), SSH in via <code>ssh zero@10.42.0.1</code>, then:</p>
+<pre><code class="language-bash">sudo nmcli connection modify ZeroCloud connection.autoconnect no
+sudo nmcli connection down ZeroCloud
+</code></pre>
+<p>The Pi rejoins your normal Wi-Fi within ~20 seconds. Move the Mac back to that Wi-Fi and use <code>ssh zero@zerocloud.local</code>.
+To copy changed files while the Pi is a hotspot, use <code>zero@10.42.0.1</code> instead of <code>zero@zerocloud.local</code> in the <code>scp</code> command.</p>
+<hr />
+<h2 id="phase-7-pitch-rehearse-record-a-backup-330430">Phase 7: Pitch, rehearse, record a backup (3:30–4:30)</h2>
+<h3 id="three-slides-are-enough">Three slides are enough</h3>
+<ol>
+<li><strong>The problem.</strong> &quot;Some booking emails must not reach cloud AI, and you only know which ones after reading them.&quot;
+Examples: controlled goods, technical specs, confidential contracts.</li>
+<li><strong>Step 0 before ELM.</strong> The architecture diagram from the top of this guide, plus the box:
+<em>€100-class prototype · ~10 W · no AI provider.</em></li>
+<li><strong>The ask.</strong> &quot;Test it with Compliance on 200 past emails.&quot; Three numbers to measure: share cleared automatically,
+sensitive emails missed (target: zero), review time per held case.</li>
+</ol>
+<h3 id="say-it-precisely">Say it precisely</h3>
+<p>These are the fixes from the design critique. They keep the claims accurate if a judge pushes back:</p>
+<table>
+<thead>
+<tr>
+<th>Instead of…</th>
+<th>Say…</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>&quot;Compliance confirmed these rules&quot;</td>
+<td>&quot;<strong>Proposed</strong> rules, to be confirmed by Compliance&quot;</td>
+<td>The two routing rules are your working assumptions</td>
+</tr>
+<tr>
+<td>&quot;It keeps data off the cloud&quot;</td>
+<td>&quot;It keeps sensitive cases <strong>away from cloud AI</strong> until a compliance manager approves them&quot;</td>
+<td>Emails already live in our cloud mailbox; the policy is about AI processing</td>
+</tr>
+<tr>
+<td>&quot;It runs offline in production&quot;</td>
+<td>&quot;On our own server, <strong>no external AI provider</strong>&quot;</td>
+<td>A production gateway must be on the network to receive emails and pass them to ELM. The Pi demo runs air-gapped to make the point visible.</td>
+</tr>
+<tr>
+<td>&quot;The AI never makes mistakes&quot;</td>
+<td>&quot;<strong>When in doubt, it holds.</strong> The AI only reads; lists and a human decide.&quot;</td>
+<td>No model can promise zero hallucination; the design makes errors harmless</td>
+</tr>
+<tr>
+<td>&quot;A Pi screens all our email&quot;</td>
+<td>&quot;Rules screen every email in milliseconds; the model only reads the unclear ones. <strong>The Pi is the prototype</strong>; the architecture scales on our own hardware.&quot;</td>
+<td>A Pi handles roughly 60–100 model reads an hour</td>
+</tr>
+<tr>
+<td>&quot;It screens everything&quot;</td>
+<td>&quot;Sanctions screening <strong>stays in TMS</strong>. The gateway adds what TMS doesn't check before AI automation: dual-use goods, technical data and confidential material.&quot;</td>
+<td>Avoids duplicating an existing control</td>
+</tr>
+<tr>
+<td>(nothing)</td>
+<td>&quot;Every hold, approval and rejection is <strong>logged</strong>, with the control-list version&quot;</td>
+<td>Compliance will ask who approved what, when, and against which list</td>
+</tr>
+<tr>
+<td>&quot;Why not cloud AI under a data agreement?&quot;</td>
+<td>&quot;For generic emails, fine: those go to ELM. The point is the ones you can't know are sensitive until they've been read.&quot;</td>
+<td>The strongest answer to the most likely objection</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-255-script">The 2:55 script</h3>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Beat</th>
+<th>You say / do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0:00–0:25</td>
+<td><strong>Problem</strong> (slide 1)</td>
+<td>&quot;ELM will let AI handle our bookings. But some emails carry controlled goods, technical specs or confidential contracts, which our GenAI rules keep out of cloud AI. And you only know after you've read them.&quot;</td>
+</tr>
+<tr>
+<td>0:25–0:40</td>
+<td><strong>Solution</strong></td>
+<td>Hold up the Pi. &quot;Step zero before ELM, on our own hardware. No AI provider, not even internet: see the green 'air-gapped' light.&quot;</td>
+</tr>
+<tr>
+<td>0:40–1:00</td>
+<td><strong>Clean booking</strong></td>
+<td><em>Run step 0</em>. &quot;A normal booking: cleared in a millisecond, sent to ELM.&quot; Point at the JSON filling in: &quot;And the local AI turns the email into structured booking data for ELM.&quot;</td>
+</tr>
+<tr>
+<td>1:00–1:15</td>
+<td><strong>Sensitive booking</strong></td>
+<td><em>Run step 0</em>. &quot;Controlled electronics and a confidential spec sheet: held on the box.&quot; (Don't wait for its JSON.)</td>
+</tr>
+<tr>
+<td>1:15–1:45</td>
+<td><strong>Unclear booking</strong></td>
+<td><em>Run step 0</em>. &quot;No rule fires. The local AI reads it, recognises drone parts, and holds it. Reading it <em>here</em> is the whole point.&quot; (Say this while the AI reads, ~10–20 s.)</td>
+</tr>
+<tr>
+<td>1:45–2:25</td>
+<td><strong>Human decides, with AI help</strong></td>
+<td><em>Review case →</em> click <strong>What should I ask the customer?</strong> &quot;The compliance manager asks our own procedures, on this box.&quot; (~10–20 s.) Then type the reason &quot;End-use statement missing&quot; and <strong>Reject</strong>: &quot;Decision, reason and name: in the case history.&quot;</td>
+</tr>
+<tr>
+<td>2:25–2:55</td>
+<td><strong>Why it matters + ask</strong> (slides 2–3)</td>
+<td>&quot;Most bookings flow untouched; the sensitive few never reach cloud AI unreviewed. Next: test it with Compliance on 200 past emails. ZeroCloud: step zero before ELM.&quot;</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Timing tip:</strong> the two AI waits (unclear booking and the knowledge-base answer) are the slowest parts. Rehearse with a
+timer on the Pi itself. If you're over 3:00, skip the sensitive booking: the unclear one makes the stronger point.</p>
+<h3 id="rehearse-and-protect-yourself">Rehearse and protect yourself</h3>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Rehearse the full script <strong>3 times with a timer</strong>. Don't cut the live run: it's your strongest moment.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <strong>Record a backup video:</strong> on the Mac press <strong>⌘+Shift+5</strong> → <em>Record Entire Screen</em>, run the script's demo steps (samples 1, 2 and 3, the knowledge-base question, then reject with a reason), then stop from the menu bar.
+<strong>Why:</strong> if the projector, venue Wi-Fi interference or anything else fails, you play the video and keep going. Judges respect a calm fallback.</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> In the browser, zoom to ~125% (⌘ +) so the back row can read it.</li>
+</ul>
+<h3 id="pre-stage-checklist-10-minutes-before-you-present">Pre-stage checklist (10 minutes before you present)</h3>
+<ul class="contains-task-list">
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Pi powered on for at least 5 minutes (model loaded, warm)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Mac joined to <strong>ZeroCloud</strong> Wi-Fi, browser open at <code>http://10.42.0.1:8080</code>, pills green</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> One warm-up run of sample 3 done (the first model read after boot is the slowest)</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> <strong>Reset demo</strong> clicked (bottom of the page), so the review list starts empty</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Mac notifications off (Control Centre → Focus → Do Not Disturb), other tabs closed</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> Backup video on the desktop</li>
+<li class="task-list-item enabled"><input class="task-list-item-checkbox"  type="checkbox"> The Pi is physically visible to the audience. The point is that the AI is in that little box.</li>
+</ul>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ssh: Could not resolve hostname zerocloud.local</code></td>
+<td>Wait 2 more minutes (first boot is slow). Make sure the Mac is on the <strong>same</strong> Wi-Fi you entered in Imager. Check the SSID and password spelling, then re-flash. Venue networks sometimes block devices from seeing each other: use your phone's hotspot instead.</td>
+</tr>
+<tr>
+<td><code>WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED</code> (after re-flashing)</td>
+<td>On the Mac: <code>ssh-keygen -R zerocloud.local</code>, then connect again.</td>
+</tr>
+<tr>
+<td><code>ollama: command not found</code></td>
+<td>The install didn't finish. Check internet on the Pi: <code>ping -c 2 ollama.com</code>, then re-run the install command.</td>
+</tr>
+<tr>
+<td>App says &quot;Can't reach Ollama&quot;</td>
+<td><code>sudo systemctl restart ollama</code>, wait 10 s, retry. Check <code>systemctl status ollama --no-pager</code>.</td>
+</tr>
+<tr>
+<td>App says &quot;model … not found&quot;</td>
+<td><code>ollama pull llama3.2:3b</code> (needs internet: go back online first, see Phase 6).</td>
+</tr>
+<tr>
+<td><code>OSError: [Errno 98] Address already in use</code></td>
+<td>The app already runs as a service (Phase 6). Don't start it by hand; use <code>sudo systemctl restart zerocloud</code>, and <code>journalctl -u zerocloud -f</code> for the live log.</td>
+</tr>
+<tr>
+<td>Every unclear email is held, even harmless ones</td>
+<td>Fail-closed working as designed: the small model wasn't confident. Try <code>llama3.2:3b</code> instead of <code>1b</code> (<code>./setup/install-service.sh llama3.2:3b</code>).</td>
+</tr>
+<tr>
+<td>Model pill stuck on &quot;loading…&quot;</td>
+<td>Normal for up to ~60 s after boot. If longer: <code>journalctl -u zerocloud -n 30 --no-pager</code>.</td>
+</tr>
+<tr>
+<td>Answers are very slow / temperature over 80 °C</td>
+<td>Check <code>vcgencmd get_throttled</code>. Anything other than <code>0x0</code> means a power or cooling problem. Use the kit's power supply and fan. Or switch to the 1B model: <code>./setup/install-service.sh llama3.2:1b</code>.</td>
+</tr>
+<tr>
+<td>&quot;ZeroCloud&quot; Wi-Fi doesn't appear on the Mac</td>
+<td>SSH in via the normal Wi-Fi (pull the power to reboot, since the hotspot isn't on autostart until 6b's last step), then run <code>sudo nmcli connection up ZeroCloud</code> and read the error. Check the Wi-Fi country was set in Imager.</td>
+</tr>
+<tr>
+<td>Mac keeps jumping back to the venue Wi-Fi</td>
+<td>System Settings → Wi-Fi → venue network → ⓘ → turn off <strong>Auto-Join</strong> during the demo.</td>
+</tr>
+<tr>
+<td>Locked out completely</td>
+<td>Pull the power and plug it back in. If the hotspot is on autostart, join <strong>ZeroCloud</strong> and <code>ssh zero@10.42.0.1</code>. If all else fails, re-flash the card: Phases 2–6 take about an hour with this guide.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="whats-in-this-folder">What's in this folder</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app.py</code></td>
+<td>The whole gateway: stage-1 rules, the local-AI prompt and answer form, the fail-closed decision, approval, the audit log and the simulated ELM hand-off.</td>
+</tr>
+<tr>
+<td><code>rules/control_list.json</code></td>
+<td>The <strong>demo</strong> control list: controlled HS codes and keywords for dual-use goods, technical data and confidential terms. Illustrative, not legal advice. Edit it and restart the app to change what's screened.</td>
+</tr>
+<tr>
+<td><code>static/index.html</code></td>
+<td>The web page you demo, with two tabs: Gate and Compliance review. Loads no external fonts or scripts, so it works with zero internet.</td>
+</tr>
+<tr>
+<td><code>samples/*.txt</code></td>
+<td>The three fictional demo emails: clean, sensitive, unclear. Add your own <code>.txt</code> files here and they appear as buttons automatically.</td>
+</tr>
+<tr>
+<td><code>knowledge/*.md</code></td>
+<td>The <strong>demo</strong> knowledge base the reviewer can ask: dual-use procedure, GenAI data rules (from Compliance's input), questions for customers, technical data, decisions. Clearly labelled demo content, not official Forto policy. Replace with real procedures and restart the app; each <code>##</code> section becomes a searchable piece.</td>
+</tr>
+<tr>
+<td><code>data/</code> (created on first use)</td>
+<td>Cases, the append-only audit log (<code>audit.jsonl</code>) and the simulated ELM hand-off, stored on the Pi only.</td>
+</tr>
+<tr>
+<td><code>setup/install-service.sh</code></td>
+<td>Makes the app start at every boot (systemd).</td>
+</tr>
+<tr>
+<td><code>setup/hotspot.sh</code></td>
+<td>Creates the &quot;ZeroCloud&quot; Wi-Fi network broadcast by the Pi.</td>
+</tr>
+</tbody>
+</table>
+<p>Settings you can change through environment variables: <code>ZC_MODEL</code> (default <code>llama3.2:3b</code>), <code>ZC_PORT</code> (default <code>8080</code>), <code>OLLAMA_URL</code>.</p>
+<h2 id="if-you-finish-early-stretch-ideas">If you finish early (stretch ideas)</h2>
+<ul>
+<li>Ask Compliance for the HS codes they actually use for dual-use screening, and put them into <code>rules/control_list.json</code>.</li>
+<li>Add an anonymised real case as a fifth sample (no customer names). It becomes a button automatically.</li>
+<li>Run the three samples with <code>ZC_MODEL=qwen2.5:3b python3 app.py</code> and compare decisions and speed with Llama: a nice &quot;we benchmarked&quot; slide.</li>
+</ul>
+
+</main>
+<script>
+  // Copy buttons on every code block.
+  document.querySelectorAll("pre").forEach((pre) => {
+    const wrap = document.createElement("div");
+    wrap.className = "pre-wrap";
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+    const btn = document.createElement("button");
+    btn.className = "copy";
+    btn.textContent = "Copy";
+    btn.onclick = async () => {
+      const text = pre.innerText.replace(/\n$/, "");
+      try { await navigator.clipboard.writeText(text); }
+      catch {
+        const ta = document.createElement("textarea");
+        ta.value = text; document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove();
+      }
+      btn.textContent = "Copied ✓";
+      setTimeout(() => (btn.textContent = "Copy"), 1500);
+    };
+    wrap.append(btn);
+  });
+
+  // Wide tables scroll sideways instead of stretching the page.
+  document.querySelectorAll("table").forEach((t) => {
+    const wrap = document.createElement("div");
+    wrap.className = "table-wrap";
+    t.replaceWith(wrap);
+    wrap.append(t);
+  });
+
+  // Table of contents from the phase headings.
+  const toc = document.createElement("nav");
+  toc.className = "toc";
+  toc.innerHTML = "<b>Jump to</b>";
+  document.querySelectorAll("h2[id]").forEach((h) => {
+    const a = document.createElement("a");
+    a.href = "#" + h.id;
+    a.textContent = h.textContent;
+    toc.append(a);
+  });
+  document.querySelector("main hr")?.after(toc);
+
+  // Checkboxes remember their state in this browser.
+  const KEY = "zerocloud-guide-checks";
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
+  const boxes = [...document.querySelectorAll("input.task-list-item-checkbox")];
+  function update() {
+    const done = boxes.filter((b) => b.checked).length;
+    document.getElementById("progress").innerHTML =
+      `ZeroCloud build progress: <span>${done} / ${boxes.length}</span> steps done`;
+  }
+  boxes.forEach((box, i) => {
+    box.disabled = false;
+    box.checked = !!saved[i];
+    box.closest("li").classList.toggle("done", box.checked);
+    box.onchange = () => {
+      saved[i] = box.checked;
+      box.closest("li").classList.toggle("done", box.checked);
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch {}
+      update();
+    };
+  });
+  update();
+</script>
+</body>
+</html>

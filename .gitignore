@@ -1,0 +1,5 @@
+# Runtime data written by the gateway (cases, audit log, ELM outbox)
+data/
+__pycache__/
+*.pyc
+.DS_Store
